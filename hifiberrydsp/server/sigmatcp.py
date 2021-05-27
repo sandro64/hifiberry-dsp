@@ -40,7 +40,7 @@ from hifiberrydsp.hardware import adau145x
 from hifiberrydsp.hardware.spi import SpiHandler
 from hifiberrydsp.datatools import int_data
 from hifiberrydsp.parser.xmlprofile import \
-    XmlProfile, ATTRIBUTE_VOL_CTL, ATTRIBUTE_SPDIF_ACTIVE
+    XmlProfile, ATTRIBUTE_VOL_CTL, ATTRIBUTE_SPDIF_ACTIVE, ATTRIBUTE_MUTE_REG
 from hifiberrydsp.alsa.alsasync import AlsaSync
 from hifiberrydsp.lg.soundsync import SoundSync
 from hifiberrydsp import datatools
@@ -741,15 +741,18 @@ class SigmaTCPHandler(BaseRequestHandler):
         logging.debug("checking profile for SPDIF state and volume control support")
         volreg = SigmaTCPHandler.get_meta(ATTRIBUTE_VOL_CTL)
         spdifreg = SigmaTCPHandler.get_meta(ATTRIBUTE_SPDIF_ACTIVE)
+        mutereg = SigmaTCPHandler.get_meta(ATTRIBUTE_MUTE_REG)
         if volreg is None or len(volreg) == 0 or \
-            spdifreg is None or len(spdifreg) == 0:
-            SigmaTCPHandler.lgsoundsync.set_registers(None, None)
+            spdifreg is None or len(spdifreg) == 0 or \
+             mutereg is None or len(mutereg) == 0:
+            SigmaTCPHandler.lgsoundsync.set_registers(None, None, None)
             logging.debug("disabled LG Sound Sync")
 
         logging.info("enabling LG Sound Sync")
         volr = datatools.parse_int(volreg)
         spdifr = datatools.parse_int(spdifreg)
-        SigmaTCPHandler.lgsoundsync.set_registers(volr, spdifr)
+        muter = datatools.parse_int(mutereg)
+        SigmaTCPHandler.lgsoundsync.set_registers(volr, spdifr, muter)
 
 
 class ProgramRefresher(Thread):

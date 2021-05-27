@@ -51,28 +51,39 @@ class SoundSync(Thread):
 
         self.volume_register = None
         self.spdif_active_register = None
+        self.mute_register = None
 
         Thread.__init__(self)
 
-    def set_registers(self, volume_register, spdif_active_register):
-        logging.info("LG Sound Sync: Using volume register at %s and SPDIF active register at %s",
-                     volume_register, spdif_active_register)
+    def set_registers(self, volume_register, spdif_active_register, mute_register):
+        logging.info("LG Sound Sync: Using volume register at %s and SPDIF active register at %s and mute register at %s",
+                     volume_register, spdif_active_register, mute_register)
         self.volume_register = volume_register
         self.spdif_active_register = spdif_active_register
+        self.mute_register = mute_register
 
     def update_volume(self):
         if self.volume_register is None:
             return False
 
+        if self.mute_register is None:
+            return False
+
         if (self.spdif_active_register is not None) and (not self.is_spdif_active()):
             return False
 
-        volume = self.try_read_volume()
+        mute = self.try_read_mute()
 
-        if volume is None:
+        if mute is None:
             return False
 
-        self.write_volume(volume)
+        self.write_mute(mute)
+
+        if mute == 0:
+            volume = self.try_read_volume()
+            if volume is None:
+                return False
+            self.write_volume(volume)
 
         return True
 
@@ -83,6 +94,10 @@ class SoundSync(Thread):
         data = self.spi.read(self.spdif_active_register, 4)
         [spdif_active] = struct.unpack(">l", data)
         return spdif_active != 0
+
+    def try_read_mute(self):
+        spdif_status_register = 0xf617
+        return self.parse_mute_from_status(self.spi.read(spdif_status_register, 6))
 
     def try_read_volume(self):
         spdif_status_register = 0xf617
@@ -99,7 +114,9 @@ class SoundSync(Thread):
     SIGNATURE_MASK = 0xfffff
     SIGNATURE_VALUE = 0xf048a
     VOLUME_SHIFT = 7 * 4
-    VOLUME_MASK = 0xff
+    VOLUME_MASK = 0x7f
+    MUTE_SHIFT = 8 * 4 + 3
+    MUTE_MASK = 0x01
 
     @staticmethod
     def parse_volume_from_status(data):
@@ -110,11 +127,26 @@ class SoundSync(Thread):
 
         return None
 
+    @staticmethod
+    def parse_mute_from_status(data):
+        bits = int.from_bytes(data, byteorder="big")
+
+        if bits >> SoundSync.SIGNATURE_SHIFT & SoundSync.SIGNATURE_MASK == SoundSync.SIGNATURE_VALUE:
+            return bits >> SoundSync.MUTE_SHIFT & SoundSync.MUTE_MASK
+
+        return None
+
     def write_volume(self, volume):
         assert 0 <= volume <= 100
         dspdata = datatools.int_data(self.dsp.decimal_repr(percent2amplification(volume)),
                                      self.dsp.WORD_LENGTH)
         self.spi.write(self.volume_register, dspdata)
+
+    def write_mute(self, mute):
+        assert 0 <= mute <= 1
+        dspdata = datatools.int_data(self.dsp.decimal_repr(mute),
+                                     self.dsp.WORD_LENGTH)
+        self.spi.write(self.mute_register, dspdata)
 
     POLL_INTERVAL = 0.3
 
